@@ -20,8 +20,256 @@ def muRel(lmul, smul, lmub, smub):
     #   mas/yr -> as/yr ->   as/day   ->  deg/day    ->   rad/day
     return mu * (1./1000.) * (1./365.25) * (1.0/60.0/60.0) * np.pi/180.0
 
-# This function calculates a series of microlensing observables for an (l,b) pointing, corresponding to pre-made lens and source catalogs
+'''
+Inputs: lens and source directory and galactic coordinates for synthpop catalogs.
+Optional: additional magnitude cuts to make and whether to include nsd component
+Output: lists of microlensing rates and averages, values and descriptions
+'''
 def mulens_stats(len_dir, src_dir, l, b, outputs=['l','b','n_source','n_lens','sa_source','sa_lens',
+                                                  'avg_tau','avg_t','avg_theta',
+                                                  'eventrate_area','eventrate_source',
+                                                  'avg_ds','avg_dl',
+                                                  'stdev_ds','stdev_dl','stdev_t',
+                                                  'frac_bulge_lens', 'frac_disk_lens',
+                                                  'frac_bulge_source','frac_disk_source',
+                                                  'n_compact_obj','frac_compact_obj'
+                                                 ],
+                    nsd=False, roman_blue=False, mag_band=None, mag_cut=np.inf):
+    if nsd:
+        outputs = np.append(outputs,'frac_nsd_lens')
+        outputs = np.append(outputs,'frac_nsd_source')
+    if roman_blue:
+        outputs = np.append(outputs, 'frac_det_blue')
+    # Set up dictionary for return values
+    return_dict = {}
+    return_dict['l'] = l
+    return_dict['b'] = b
+    # read in data
+    f_lens = len_dir+'l'+f'{l:2.3f}'+'_b'+f'{b:2.3f}'+'.csv'
+    f_src = src_dir+'l'+f'{l:2.3f}'+'_b'+f'{b:2.3f}'+'.csv'
+    l_cols = ['Mass','Dist','pop','mul','mub','Dim_Compact_Object_Flag']
+    s_cols = ['Dist','pop','mul','mub']
+    if mag_band is not None:
+        s_cols.append(mag_band)
+    if roman_blue:
+        s_cols.append('Z087')
+    srcs = pd.read_csv(f_src, usecols=s_cols)
+    lens = pd.read_csv(f_lens, usecols=l_cols)
+    f_lens_param = len_dir+'l'+f'{l:2.3f}'+'_b'+f'{b:2.3f}'+'.log'
+    f_src_param = src_dir+'l'+f'{l:2.3f}'+'_b'+f'{b:2.3f}'+'.log'
+    sv = []
+    sav=0
+    with open(f_lens_param) as lop:
+        for line in lop:
+            if sav==1:
+                sv.append(line)
+                sav=0
+            if ('set solid_angle to' in line):
+                sav=1
+    la = float(sv[-1].split(' ')[-2])*(np.pi/180)**2
+    sv = []
+    with open(f_src_param) as lop:
+        for line in lop:
+            if sav==1:
+                sv.append(line)
+                sav=0
+            if ('set solid_angle to' in line):
+                sav=1
+    sa = float(sv[-1].split(' ')[-2])*(np.pi/180)**2
+    # Get the number of stars in each catalog
+    nl = len(lens.index)
+    # Save lens and source numbers and solid angles for output
+    return_dict['n_lens'] = nl
+    return_dict['sa_source'] = sa * (180/np.pi)**2
+    return_dict['sa_lens'] = la * (180/np.pi)**2
+
+    # Get necessary lens data
+    lens_idxs = np.array(lens.index)
+    lens_dists = np.array(lens['Dist'])
+    lens_masses = np.array(lens['Mass'])
+    lens_muls = np.array(lens['mul'])
+    lens_mubs = np.array(lens['mub'])
+    lens_pops = np.array(lens['pop'])
+    lens_cos = (np.array(lens['Dim_Compact_Object_Flag'])>1).astype(int)
+    lens_inbulge = np.array((lens_pops==0.0).astype(int))
+    if nsd:
+        lens_innsd = np.array((lens_pops==2.0).astype(int))
+        lens_indisk = np.array((lens_pops>=3.0).astype(int))
+    else:
+        lens_indisk = np.array((lens_pops>=2.0).astype(int))
+    
+    # Recut source mag if needed
+    if mag_band is None:
+        do_srcs = srcs.index
+    else:
+        do_srcs = srcs[srcs[mag_band]<mag_cut].index
+    # Loop over each source in the catalog
+    do_srcs = srcs.loc[do_srcs].reset_index()
+    src_idxs = np.array(do_srcs.index)
+    ns = len(src_idxs)
+    return_dict['n_source'] = ns
+    srcs,lenses = np.meshgrid(src_idxs,lens_idxs)
+    srcs,lenses = srcs.flatten(),lenses.flatten()
+    src_dists = np.array(do_srcs['Dist'])
+    src_muls = np.array(do_srcs['mul'])
+    src_mubs = np.array(do_srcs['mub'])
+    src_pops = np.array(do_srcs['pop'])
+    if roman_blue:
+        src_Z087 = (np.array(do_srcs['Z087'] < 24)).astype(int)
+    
+    src_inbulge = (src_pops==0.0).astype(int)
+    if nsd:
+        src_innsd =  (src_pops==2.0).astype(int)
+        src_indisk =  (src_pops>=3.0).astype(int)
+    else:
+        src_indisk =  (src_pops>=2.0).astype(int)
+
+    dist_comp = (src_dists[srcs] > lens_dists[lenses]) #source further than lens
+    use_srcs = srcs[dist_comp]
+    use_lens = lenses[dist_comp]
+    
+    theta_e = thetaE(lens_masses[use_lens],lens_dists[use_lens],src_dists[use_srcs])
+    mu_rel = muRel(lens_muls[use_lens],src_muls[use_srcs],lens_mubs[use_lens],src_mubs[use_srcs])
+    thetamu = theta_e*mu_rel
+    sum_thetamu = np.sum(thetamu)
+
+    return_dict['avg_t'] = np.average(theta_e/mu_rel, weights=theta_e*mu_rel)
+    return_dict['avg_theta'] = np.average(theta_e, weights=theta_e*mu_rel)
+    return_dict['avg_ds'] = np.average(src_dists[use_srcs], weights=theta_e*mu_rel)
+    return_dict['avg_dl'] = np.average(lens_dists[use_lens], weights=theta_e*mu_rel)
+    return_dict['avg_tau'] = np.pi*np.sum(theta_e**2)/(ns*la)
+    return_dict['eventrate_area'] = sum_thetamu*2/la/(sa/(np.pi/180)**2) *365
+    return_dict['eventrate_source'] = sum_thetamu*2/la/ns*365
+    
+    return_dict['frac_bulge_lens'] = np.sum(lens_inbulge[use_lens]*thetamu) / sum_thetamu
+    return_dict['frac_disk_lens'] = np.sum(lens_indisk[use_lens]*thetamu) / sum_thetamu
+    return_dict['frac_bulge_source'] = np.sum(src_inbulge[use_srcs]*thetamu) / sum_thetamu
+    return_dict['frac_disk_source'] = np.sum(src_indisk[use_srcs]*thetamu) / sum_thetamu    
+    if nsd:
+        return_dict['frac_nsd_lens'] = np.sum(lens_innsd[use_lens]*thetamu) / sum_thetamu
+        return_dict['frac_nsd_source'] = np.sum(src_innsd[use_srcs]*thetamu) / sum_thetamu
+    if roman_blue:
+        return_dict['frac_det_blue'] = np.sum(src_Z087[use_srcs]*thetamu) / sum_thetamu
+    return_dict['frac_compact_obj'] = np.sum(lens_cos[use_lens]*thetamu) / sum_thetamu    
+    return_dict['n_compact_obj'] = np.sum(lens_cos)
+
+
+    return_dict['stdev_ds'] = np.sqrt(np.average((src_dists[use_srcs]-return_dict['avg_ds'])**2, weights=theta_e*mu_rel))
+    return_dict['stdev_dl'] = np.sqrt(np.average((lens_dists[use_lens]-return_dict['avg_dl'])**2, weights=theta_e*mu_rel))
+    return_dict['stdev_t'] = np.sqrt(np.average((theta_e/mu_rel - return_dict['avg_t'])**2, weights=theta_e*mu_rel))
+
+    # Return selected outputs'''
+    return [return_dict[output] for output in outputs], outputs
+
+
+def mulens_events(len_dir, src_dir, output_dir, l, b,
+                    mag_band=None, mag_cut=np.inf):
+    #print('STARTING',l,b)
+    # Set up dictionary for return values
+    return_dict = {}
+    return_dict['l'] = l
+    return_dict['b'] = b
+    # read in data
+    f_lens = len_dir+'l'+f'{l:2.3f}'+'_b'+f'{b:2.3f}'+'.csv'
+    f_src = src_dir+'l'+f'{l:2.3f}'+'_b'+f'{b:2.3f}'+'.csv'
+    l_cols = ['Mass','Dist','pop','mul','mub','Dim_Compact_Object_Flag']
+    s_cols = ['Dist','pop','mul','mub']
+    if mag_band is not None:
+        s_cols.append(mag_band)
+    srcs = pd.read_csv(f_src, usecols=s_cols)
+    lens = pd.read_csv(f_lens, usecols=l_cols)
+    f_lens_param = len_dir+'l'+f'{l:2.3f}'+'_b'+f'{b:2.3f}'+'.log'
+    f_src_param = src_dir+'l'+f'{l:2.3f}'+'_b'+f'{b:2.3f}'+'.log'
+    sv = []
+    sav=0
+    with open(f_lens_param) as lop:
+        for line in lop:
+            if sav==1:
+                sv.append(line)
+                sav=0
+            if ('set solid_angle to' in line):
+                sav=1
+    la = float(sv[-1].split(' ')[-2])*(np.pi/180)**2
+    sv = []
+    with open(f_src_param) as lop:
+        for line in lop:
+            if sav==1:
+                sv.append(line)
+                sav=0
+            if ('set solid_angle to' in line):
+                sav=1
+    sa = float(sv[-1].split(' ')[-2])*(np.pi/180)**2
+    # Get the number of stars in each catalog
+    nl = len(lens.index)
+    # Save lens and source numbers and solid angles for output
+    return_dict['n_lens'] = nl
+    return_dict['sa_source'] = sa * (180/np.pi)**2
+    return_dict['sa_lens'] = la * (180/np.pi)**2
+
+    # Get necessary lens data
+    lens_idxs = np.array(lens.index)
+    lens_dists = np.array(lens['Dist'])
+    lens_masses = np.array(lens['Mass'])
+    lens_muls = np.array(lens['mul'])
+    lens_mubs = np.array(lens['mub'])
+    lens_pops = np.array(lens['pop'])
+    lens_inbulge = np.array((lens_pops==0.0).astype(int))
+    
+    # Recut source mag if needed
+    if mag_band is None:
+        do_srcs = srcs.index
+    else:
+        do_srcs = srcs[srcs[mag_band]<mag_cut].index
+    # Loop over each source in the catalog
+    do_srcs = srcs.loc[do_srcs].reset_index()
+    src_idxs = np.array(do_srcs.index)
+    ns = len(src_idxs)
+    return_dict['n_source'] = ns
+    srcs,lenses = np.meshgrid(src_idxs,lens_idxs)
+    srcs,lenses = srcs.flatten(),lenses.flatten()
+    src_dists = np.array(do_srcs['Dist'])
+    src_muls = np.array(do_srcs['mul'])
+    src_mubs = np.array(do_srcs['mub'])
+    src_pops = np.array(do_srcs['pop'])
+
+    dist_comp = (src_dists[srcs] > lens_dists[lenses]) #source further than lens
+    use_srcs = srcs[dist_comp]
+    use_lens = lenses[dist_comp]
+    
+    theta_e = thetaE(lens_masses[use_lens],lens_dists[use_lens],src_dists[use_srcs])
+    mu_rel = muRel(lens_muls[use_lens],src_muls[use_srcs],lens_mubs[use_lens],src_mubs[use_srcs])
+    thetamu = theta_e*mu_rel
+    sum_thetamu = np.sum(thetamu)
+    
+    event_ml = lens_masses[use_lens]
+    event_dl = lens_dists[use_lens]
+    event_ds = src_dists[use_srcs]
+    event_lmul = lens_muls[use_lens]
+    event_lmub = lens_mubs[use_lens]
+    event_smul = src_muls[use_srcs]
+    event_smub = src_mubs[use_srcs]
+    event_lpop = lens_pops[use_lens]
+    event_spop = src_pops[use_srcs]
+    event_ltype = np.array(lens['Dim_Compact_Object_Flag'])[use_lens]
+
+    dbins = np.arange(0,25.001,0.5)
+    #ndls = np.transpose(np.array(list(map(lambda i: [sum((event_dl*thetamu)[(event_dl>dbins[i+0]) & (event_dl<dbins[i+1])]), 
+    #                        sum((event_ds*thetamu)[(event_ds>dbins[i+0]) & (event_ds<dbins[i+1])])], 
+    #                        range(len(dbins)-1))))/sum_thetamu)
+    ndl = np.histogram(event_dl, bins=dbins, weights=thetamu)[0]/sum_thetamu
+    nds = np.histogram(event_ds, bins=dbins, weights=thetamu)[0]/sum_thetamu
+    
+    df = pd.DataFrame(data=np.transpose([dbins[1:],ndl,nds]), 
+                      columns=['dbins','fdl','fds'])
+    df.to_csv(output_dir+'/'+'l'+f'{l:2.3f}'+'_b'+f'{b:2.3f}'+'.csv', index=False)
+    #print('saved to',output_dir+'/'+'l'+f'{l:2.3f}'+'_b'+f'{b:2.3f}'+'.csv')
+
+    # Return event list
+    return [dbins[1:],ndl,nds], ['dbins','fdl','fds']
+
+#OLD version of the above function that was slower
+# This function calculates a series of microlensing observables for an (l,b) pointing, corresponding to pre-made lens and source catalogs
+def mulens_stats_old(len_dir, src_dir, l, b, outputs=['l','b','n_source','n_lens','sa_source','sa_lens',
                                                   'avg_tau','avg_t','avg_theta',
                                                   'eventrate_area','eventrate_source',
                                                   'avg_ds','avg_dl',
@@ -75,16 +323,16 @@ def mulens_stats(len_dir, src_dir, l, b, outputs=['l','b','n_source','n_lens','s
     sum_bulgesrc_thetamu, sum_disksrc_thetamu = 0.0, 0.0
     sum_nsdlens_thetamu, sum_nsdsrc_thetamu = 0.0,0.0
     # Get necessary lens data
-    lens_dists = lens['Dist']
-    lens_masses = lens['Mass']
-    lens_muls = lens['mul']
-    lens_mubs = lens['mub']
-    lens_inbulge = (lens['pop']==0.0).astype(int)
+    lens_dists = np.array(lens['Dist'])
+    lens_masses = np.array(lens['Mass'])
+    lens_muls = np.array(lens['mul'])
+    lens_mubs = np.array(lens['mub'])
+    lens_inbulge = np.array((lens['pop']==0.0).astype(int))
     if nsd:
-        lens_innsd = (lens['pop']==2.0).astype(int)
-        lens_indisk = (lens['pop']>=3.0).astype(int)
+        lens_innsd = np.array((lens['pop']==2.0).astype(int))
+        lens_indisk = np.array((lens['pop']>=3.0).astype(int))
     else:
-        lens_indisk = (lens['pop']>=2.0).astype(int)
+        lens_indisk = np.array((lens['pop']>=2.0).astype(int))
     # Recut source mag if needed
     if mag_band is None:
         do_srcs = srcs.index
@@ -166,7 +414,8 @@ def mulens_stats(len_dir, src_dir, l, b, outputs=['l','b','n_source','n_lens','s
     # Return selected outputs
     return [return_dict[output] for output in outputs], outputs
 
-def mulens_hist(len_dir, src_dir, l, b, mag_band=None, mag_cut=np.inf, t=30):
+#Ignore this - i forget what i was doing, and don't think it works yet
+'''def mulens_hist(len_dir, src_dir, l, b, mag_band=None, mag_cut=np.inf, t=30):
     # Set up dictionary for return values
     return_dict = {}
     return_dict['l'] = l
@@ -245,6 +494,6 @@ def mulens_hist(len_dir, src_dir, l, b, mag_band=None, mag_cut=np.inf, t=30):
     tes = tes[tes != 0.0]
 
     # Return selected outputs
-    return thetamu, tes
+    return thetamu, tes'''
 
 
