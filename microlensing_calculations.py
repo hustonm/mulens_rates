@@ -24,6 +24,7 @@ def muRel(lmul, smul, lmub, smub):
 Inputs: lens and source directory and galactic coordinates for synthpop catalogs.
 Optional: additional magnitude cuts to make and whether to include nsd component
 Output: lists of microlensing rates and averages, values and descriptions
+
 '''
 def mulens_stats(len_dir, src_dir, l, b, outputs=['l','b','n_source','n_lens','sa_source','sa_lens',
                                                   'avg_tau','avg_t','avg_theta',
@@ -32,7 +33,7 @@ def mulens_stats(len_dir, src_dir, l, b, outputs=['l','b','n_source','n_lens','s
                                                   'stdev_ds','stdev_dl','stdev_t',
                                                   'frac_bulge_lens', 'frac_disk_lens',
                                                   'frac_bulge_source','frac_disk_source',
-                                                  'n_compact_obj','frac_compact_obj'
+                                                  'n_compact_obj','frac_compact_obj', 'frac_lowmass'
                                                  ],
                     nsd=False, roman_blue=False, mag_band=None, mag_cut=np.inf):
     if nsd:
@@ -47,7 +48,7 @@ def mulens_stats(len_dir, src_dir, l, b, outputs=['l','b','n_source','n_lens','s
     # read in data
     f_lens = len_dir+'l'+f'{l:2.3f}'+'_b'+f'{b:2.3f}'+'.csv'
     f_src = src_dir+'l'+f'{l:2.3f}'+'_b'+f'{b:2.3f}'+'.csv'
-    l_cols = ['Mass','Dist','pop','mul','mub','Dim_Compact_Object_Flag']
+    l_cols = ['Mass','iMass','Dist','pop','mul','mub','Dim_Compact_Object_Flag']
     s_cols = ['Dist','pop','mul','mub']
     if mag_band is not None:
         s_cols.append(mag_band)
@@ -90,7 +91,8 @@ def mulens_stats(len_dir, src_dir, l, b, outputs=['l','b','n_source','n_lens','s
     lens_muls = np.array(lens['mul'])
     lens_mubs = np.array(lens['mub'])
     lens_pops = np.array(lens['pop'])
-    lens_cos = (np.array(lens['Dim_Compact_Object_Flag'])>1).astype(int)
+    lens_cos = (np.array(lens['Dim_Compact_Object_Flag'])>0).astype(int)
+    lens_lowmass = (np.array(lens['iMass'])<0.1).astype(int)
     lens_inbulge = np.array((lens_pops==0.0).astype(int))
     if nsd:
         lens_innsd = np.array((lens_pops==2.0).astype(int))
@@ -151,6 +153,7 @@ def mulens_stats(len_dir, src_dir, l, b, outputs=['l','b','n_source','n_lens','s
     if roman_blue:
         return_dict['frac_det_blue'] = np.sum(src_Z087[use_srcs]*thetamu) / sum_thetamu
     return_dict['frac_compact_obj'] = np.sum(lens_cos[use_lens]*thetamu) / sum_thetamu    
+    return_dict['frac_lowmass'] = np.sum(lens_lowmass[use_lens]*thetamu) / sum_thetamu    
     return_dict['n_compact_obj'] = np.sum(lens_cos)
 
 
