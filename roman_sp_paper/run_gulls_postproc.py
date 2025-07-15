@@ -4,7 +4,7 @@ import pandas as pd
 import shutil
 
 flds = pd.read_csv('overguide_chip_centers.dat', sep='\s+')
-set_name='mid2'
+set_name='extra-bright'
 dir_orig = 'roman_chips/'+set_name
 dir_new = 'roman_chips_gulls/'+set_name
 

@@ -24,10 +24,9 @@ def muRel(lmul, smul, lmub, smub):
 Inputs: lens and source directory and galactic coordinates for synthpop catalogs.
 Optional: additional magnitude cuts to make and whether to include nsd component
 Output: lists of microlensing rates and averages, values and descriptions
-
 '''
-def mulens_stats(len_dir, src_dir, l, b, outputs=['l','b','n_source','n_lens','sa_source','sa_lens',
-                                                  'avg_tau','avg_t','avg_theta',
+def mulens_stats(l, b, f_lens, f_src, outputs=['l','b','n_source','n_lens','sa_source','sa_lens',
+                                                  'avg_tau','avg_t','avg_murel','avg_theta',
                                                   'eventrate_area','eventrate_source',
                                                   'avg_ds','avg_dl',
                                                   'stdev_ds','stdev_dl','stdev_t',
@@ -35,7 +34,8 @@ def mulens_stats(len_dir, src_dir, l, b, outputs=['l','b','n_source','n_lens','s
                                                   'frac_bulge_source','frac_disk_source',
                                                   'n_compact_obj','frac_compact_obj', 'frac_lowmass'
                                                  ],
-                    nsd=False, roman_blue=False, mag_band=None, mag_cut=np.inf):
+                    nsd=False, roman_blue=False, mag_band=None, mag_cut=np.inf,
+                    f_lens_kwargs={}, f_src_kwargs={}):
     if nsd:
         outputs = np.append(outputs,'frac_nsd_lens')
         outputs = np.append(outputs,'frac_nsd_source')
@@ -46,18 +46,26 @@ def mulens_stats(len_dir, src_dir, l, b, outputs=['l','b','n_source','n_lens','s
     return_dict['l'] = l
     return_dict['b'] = b
     # read in data
-    f_lens = len_dir+'l'+f'{l:2.3f}'+'_b'+f'{b:2.3f}'+'.csv'
-    f_src = src_dir+'l'+f'{l:2.3f}'+'_b'+f'{b:2.3f}'+'.csv'
+    #f_lens = len_dir+'l'+f'{l:2.3f}'+'_b'+f'{b:2.3f}'+'.csv'
+    #f_src = src_dir+'l'+f'{l:2.3f}'+'_b'+f'{b:2.3f}'+'.csv'
     l_cols = ['Mass','iMass','Dist','pop','mul','mub','Dim_Compact_Object_Flag']
     s_cols = ['Dist','pop','mul','mub']
     if mag_band is not None:
         s_cols.append(mag_band)
     if roman_blue:
         s_cols.append('Z087')
-    srcs = pd.read_csv(f_src, usecols=s_cols)
-    lens = pd.read_csv(f_lens, usecols=l_cols)
-    f_lens_param = len_dir+'l'+f'{l:2.3f}'+'_b'+f'{b:2.3f}'+'.log'
-    f_src_param = src_dir+'l'+f'{l:2.3f}'+'_b'+f'{b:2.3f}'+'.log'
+    try:
+        srcs = pd.read_csv(f_src, usecols=s_cols, *f_src_kwargs)
+    except:
+        srcs = pd.read_hdf(f_src, key='data', usecols=s_cols, *f_src_kwargs)
+    try:
+        lens = pd.read_csv(f_lens, usecols=l_cols, *f_lens_kwargs)
+    except:
+        lens = pd.read_hdf(f_lens, key='data', usecols=l_cols, *f_lens_kwargs)
+
+    # Get solid angle in steradians from file (convert from deg^2 if needed)
+    f_lens_param = ".".join(f_lens.split('.')[:-1])+'.log'
+    f_src_param = ".".join(f_src.split('.')[:-1])+'.log'
     sv = []
     sav=0
     with open(f_lens_param) as lop:
@@ -67,7 +75,8 @@ def mulens_stats(len_dir, src_dir, l, b, outputs=['l','b','n_source','n_lens','s
                 sav=0
             if ('set solid_angle to' in line):
                 sav=1
-    la = float(sv[-1].split(' ')[-2])*(np.pi/180)**2
+    row = sv[-1].split(' ')
+    la = float(row[-2]) * ((np.pi/180)**2)**int('deg^2' in row[-1])
     sv = []
     with open(f_src_param) as lop:
         for line in lop:
@@ -76,13 +85,14 @@ def mulens_stats(len_dir, src_dir, l, b, outputs=['l','b','n_source','n_lens','s
                 sav=0
             if ('set solid_angle to' in line):
                 sav=1
-    sa = float(sv[-1].split(' ')[-2])*(np.pi/180)**2
+    row = sv[-1].split(' ')
+    sa = float(row[-2]) * ((np.pi/180)**2)**int('deg^2' in row[-1])
     # Get the number of stars in each catalog
     nl = len(lens.index)
     # Save lens and source numbers and solid angles for output
     return_dict['n_lens'] = nl
-    return_dict['sa_source'] = sa * (180/np.pi)**2
-    return_dict['sa_lens'] = la * (180/np.pi)**2
+    return_dict['sa_source'] = sa 
+    return_dict['sa_lens'] = la 
 
     # Get necessary lens data
     lens_idxs = np.array(lens.index)
@@ -140,6 +150,7 @@ def mulens_stats(len_dir, src_dir, l, b, outputs=['l','b','n_source','n_lens','s
     return_dict['avg_ds'] = np.average(src_dists[use_srcs], weights=theta_e*mu_rel)
     return_dict['avg_dl'] = np.average(lens_dists[use_lens], weights=theta_e*mu_rel)
     return_dict['avg_tau'] = np.pi*np.sum(theta_e**2)/(ns*la)
+    return_dict['avg_murel'] = np.average(mu_rel, weights=theta_e*mu_rel)
     return_dict['eventrate_area'] = sum_thetamu*2/la/(sa/(np.pi/180)**2) *365
     return_dict['eventrate_source'] = sum_thetamu*2/la/ns*365
     
