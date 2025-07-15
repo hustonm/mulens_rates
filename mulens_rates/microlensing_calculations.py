@@ -8,7 +8,19 @@ warnings.filterwarnings('ignore')
 # Some constants
 c, G, mSun, pctom = 3*10**8, 6.674*10**-11, 2*10**30, 3.086*10**16
 auinkpc = 4.84814e-9
-maglim = 18
+
+# Units provided by this function
+output_units = {'l':'deg', 'b':'deg', 
+                'n_source':'', 'n_lens':'',
+                'sa_source':'sr','sa_lens':'sr',
+                'avg_tau':'', 'avg_t':'day',
+                'avg_murel':'mas/yr', 'avg_theta':'mas',
+                'eventrate_area':'/deg^2/yr', 'eventrate_source':'/yr',
+                'avg_ds':'kpc', 'avg_dl':'kpc', 'stdev_ds':'kpc', 'stdev_dl':'kpc',
+                'frac_bulge_lens':'', 'frac_disk_lens':'', 'frac_bulge_source':'','frac_disk_source':'',
+                'n_compact_obj':'', 'frac_compact_obj':'', 'frac_lowmass':'',
+                'frac_nsd_lens':'', 'frac_nsd_source':'', 'frac_det_blue':''
+                }
 
 # Angular Einstein ring calculation
 def thetaE(lmass, ldist, sdist):
@@ -146,11 +158,11 @@ def mulens_stats(l, b, f_lens, f_src, outputs=['l','b','n_source','n_lens','sa_s
     sum_thetamu = np.sum(thetamu)
 
     return_dict['avg_t'] = np.average(theta_e/mu_rel, weights=theta_e*mu_rel)
-    return_dict['avg_theta'] = np.average(theta_e, weights=theta_e*mu_rel)
+    return_dict['avg_theta'] = np.average(theta_e*180/np.pi*60*60*1000, weights=theta_e*mu_rel)
     return_dict['avg_ds'] = np.average(src_dists[use_srcs], weights=theta_e*mu_rel)
     return_dict['avg_dl'] = np.average(lens_dists[use_lens], weights=theta_e*mu_rel)
     return_dict['avg_tau'] = np.pi*np.sum(theta_e**2)/(ns*la)
-    return_dict['avg_murel'] = np.average(mu_rel, weights=theta_e*mu_rel)
+    return_dict['avg_murel'] = np.average(mu_rel*(1000*365.25*60**2*180.0/np.pi), weights=theta_e*mu_rel) #mas/yr
     return_dict['eventrate_area'] = sum_thetamu*2/la/(sa/(np.pi/180)**2) *365
     return_dict['eventrate_source'] = sum_thetamu*2/la/ns*365
     
@@ -174,6 +186,26 @@ def mulens_stats(l, b, f_lens, f_src, outputs=['l','b','n_source','n_lens','sa_s
 
     # Return selected outputs'''
     return [return_dict[output] for output in outputs], outputs
+
+
+
+# Switch from my output format to that needed for GULLS input
+def prep_rates_for_gulls(rates_orig, chip_side=0.125)
+    rates_gulls_dict  = {'ID_src': rates_orig.chip_id, 'l_src':rates_orig.l, 'b_src':rates_orig.b,
+            'fa_l_src': np.ones(len(rates_orig))*chip_side, 'fa_b_src': np.ones(len(rates_orig))*chip_side, 
+            'sa_src':rates_orig.sa_source*(180/np.pi)**2, 'file_src':rates_orig.f_src,
+            'ID_lens': rates_orig.chip_id, 'l_lens':rates_orig.l, 'b_lens':rates_orig.b,
+            'fa_l_lens': np.ones(len(rates_orig))*chip_side, 'fa_b_lens': np.ones(len(rates_orig))*chip_side, 
+            'sa_lens':rates_orig.sa_lens*(180/np.pi)**2, 'file_lens':rates_orig.f_lens,
+            'nsource':rates_orig.n_source, 'source_area':rates_orig.sa_source*(180/np.pi)**2,
+            'nlens':rates_orig.n_lens, 'lens_area':rates_orig.sa_lens*(180/np.pi)**2,
+            'tau':rates_orig.avg_tau, 'tEmean':rates_orig.avg_t, 'murelmean':rates_orig.avg_murel, 
+            'nevents_per_tile':rates_orig.eventrate_area*chip_side**2, 'nevents_per_source':rates_orig.eventrate_source,
+            'nevents_per_deg2':rates_orig.eventrate_area, 'source_density':rates_orig.n_source/(rates_orig.sa_source*(180/np.pi)**2)
+            }
+    #gulls_output.to_csv('mulens_rates_gulls.txt', index=False, sep=' ')
+    rates_gulls = pd.DataFrame(gulls_dat)
+    return rates_gulls
 
 
 def mulens_events(len_dir, src_dir, output_dir, l, b,
@@ -283,7 +315,7 @@ def mulens_events(len_dir, src_dir, output_dir, l, b,
 
 #OLD version of the above function that was slower
 # This function calculates a series of microlensing observables for an (l,b) pointing, corresponding to pre-made lens and source catalogs
-def mulens_stats_old(len_dir, src_dir, l, b, outputs=['l','b','n_source','n_lens','sa_source','sa_lens',
+'''def mulens_stats_old(len_dir, src_dir, l, b, outputs=['l','b','n_source','n_lens','sa_source','sa_lens',
                                                   'avg_tau','avg_t','avg_theta',
                                                   'eventrate_area','eventrate_source',
                                                   'avg_ds','avg_dl',
@@ -426,7 +458,7 @@ def mulens_stats_old(len_dir, src_dir, l, b, outputs=['l','b','n_source','n_lens
         return_dict['stdev_t'] = np.sqrt(sum_tvarthetamu/sum_thetamu)
 
     # Return selected outputs
-    return [return_dict[output] for output in outputs], outputs
+    return [return_dict[output] for output in outputs], outputs'''
 
 #Ignore this - i forget what i was doing, and don't think it works yet
 '''def mulens_hist(len_dir, src_dir, l, b, mag_band=None, mag_cut=np.inf, t=30):
