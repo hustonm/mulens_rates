@@ -37,14 +37,15 @@ Inputs: lens and source directory and galactic coordinates for synthpop catalogs
 Optional: additional magnitude cuts to make and whether to include nsd component
 Output: lists of microlensing rates and averages, values and descriptions
 '''
-def mulens_stats(l, b, f_lens, f_src, outputs=['l','b','n_source','n_lens','sa_source','sa_lens',
+def mulens_stats(l, b, f_lens, f_src, field_id=None, outputs=['l','b','n_source','n_lens','sa_source','sa_lens',
                                                   'avg_tau','avg_t','avg_murel','avg_theta',
                                                   'eventrate_area','eventrate_source',
                                                   'avg_ds','avg_dl',
                                                   'stdev_ds','stdev_dl','stdev_t',
                                                   'frac_bulge_lens', 'frac_disk_lens',
                                                   'frac_bulge_source','frac_disk_source',
-                                                  'n_compact_obj','frac_compact_obj', 'frac_lowmass'
+                                                  'n_compact_obj','frac_compact_obj', 'frac_lowmass',
+                                                  'field_id', 'f_src', 'f_lens'
                                                  ],
                     nsd=False, roman_blue=False, mag_band=None, mag_cut=np.inf,
                     f_lens_kwargs={}, f_src_kwargs={}):
@@ -184,27 +185,31 @@ def mulens_stats(l, b, f_lens, f_src, outputs=['l','b','n_source','n_lens','sa_s
     return_dict['stdev_dl'] = np.sqrt(np.average((lens_dists[use_lens]-return_dict['avg_dl'])**2, weights=theta_e*mu_rel))
     return_dict['stdev_t'] = np.sqrt(np.average((theta_e/mu_rel - return_dict['avg_t'])**2, weights=theta_e*mu_rel))
 
+    return_dict['field_id'] = field_id
+    return_dict['f_lens'] = f_lens
+    return_dict['f_src'] = f_src
+
     # Return selected outputs'''
     return [return_dict[output] for output in outputs], outputs
 
 
 
 # Switch from my output format to that needed for GULLS input
-def prep_rates_for_gulls(rates_orig, chip_side=0.125)
-    rates_gulls_dict  = {'ID_src': rates_orig.chip_id, 'l_src':rates_orig.l, 'b_src':rates_orig.b,
+def prep_rates_for_gulls(rates_orig, chip_side=0.125):
+    rates_gulls_dict  = {'ID_src': rates_orig.field_id, 'l_src':rates_orig.l, 'b_src':rates_orig.b,
             'fa_l_src': np.ones(len(rates_orig))*chip_side, 'fa_b_src': np.ones(len(rates_orig))*chip_side, 
             'sa_src':rates_orig.sa_source*(180/np.pi)**2, 'file_src':rates_orig.f_src,
-            'ID_lens': rates_orig.chip_id, 'l_lens':rates_orig.l, 'b_lens':rates_orig.b,
+            'ID_lens': rates_orig.field_id, 'l_lens':rates_orig.l, 'b_lens':rates_orig.b,
             'fa_l_lens': np.ones(len(rates_orig))*chip_side, 'fa_b_lens': np.ones(len(rates_orig))*chip_side, 
             'sa_lens':rates_orig.sa_lens*(180/np.pi)**2, 'file_lens':rates_orig.f_lens,
             'nsource':rates_orig.n_source, 'source_area':rates_orig.sa_source*(180/np.pi)**2,
             'nlens':rates_orig.n_lens, 'lens_area':rates_orig.sa_lens*(180/np.pi)**2,
             'tau':rates_orig.avg_tau, 'tEmean':rates_orig.avg_t, 'murelmean':rates_orig.avg_murel, 
             'nevents_per_tile':rates_orig.eventrate_area*chip_side**2, 'nevents_per_source':rates_orig.eventrate_source,
-            'nevents_per_deg2':rates_orig.eventrate_area, 'source_density':rates_orig.n_source/(rates_orig.sa_source*(180/np.pi)**2)
+            'nevents_per_deg2':rates_orig.eventrate_area, 'source_density':rates_orig.n_source/(rates_orig.sa_source*(180/np.pi*60)**2)
             }
     #gulls_output.to_csv('mulens_rates_gulls.txt', index=False, sep=' ')
-    rates_gulls = pd.DataFrame(gulls_dat)
+    rates_gulls = pd.DataFrame(rates_gulls_dict)
     return rates_gulls
 
 
