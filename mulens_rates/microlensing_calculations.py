@@ -416,11 +416,8 @@ def events_for_popclass(h5_file, use_stars_per_bin=1e3):
                 use_lens = lens_idxs[dist_comp]
 
                 # Microlensing math
-                # get theta_e, convert rad to mas
                 theta_e = calc_thetaE(masses[use_lens], dists[use_lens], dists[use_srcs]) * 180/np.pi * 60**2 * 1000
-                # get mu_rel, TODO: confirm provided units are mas/yr
                 mu_rel = np.sqrt((mul[use_lens]-mul[use_srcs])**2 + (mub[use_lens]-mub[use_srcs])**2)
-                # pi_rel, TODO: confirm distance units
                 pi_rel = (1/dists[use_lens] - 1/dists[use_srcs])
                 pi_e = pi_rel / theta_e
                 t_e = theta_e/mu_rel * 365.25 # years -> days
