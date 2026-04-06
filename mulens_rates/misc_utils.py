@@ -23,7 +23,7 @@ def calc_clusters(points, radius):
     n_points = len(points)
     assigned = np.zeros(n_points, dtype=bool)
     clusters = []
-    for i in range(n_points):
+    for i in tqdm(range(n_points)):
         if assigned[i]:
             # Skip stars already assigned to a cluster
             continue
@@ -47,6 +47,7 @@ def calc_blends(dat_all, blend_rad, filters,
         warnings.warn(f"No primary_filter provided. Using {filters[0]}"+
             " to sort stars and flux-weight additional parameters.")
         primary_filter = filters[0]
+    dat_all = dat_all[~np.isnan(dat_all[primary_filter])].copy()
     dat_all.sort_values(by=primary_filter)
     dat_all.reset_index(drop=True,inplace=True)
 
@@ -70,11 +71,15 @@ def calc_blends(dat_all, blend_rad, filters,
     # Turn this into a masked array for easy mag + param sums
     clusters_arr = np.array(list(zip_longest(*clusters0, fillvalue=-1))).T
     clusters = np.ma.masked_values(clusters_arr, -1)
+    #pdb.set_trace()
 
     # Compute the magnitude sums & other values if desired
+    mags = np.append(mags, [np.repeat(np.inf, len(filters))], axis=0)
     bmags = magsum(mags[clusters,:])
     out = pd.DataFrame(data=bmags, columns=filters)
     if calc_params:
+        mags = np.append(mags_prim, [np.inf])
+        other_vals = np.append(other_vals, [np.repeat(0, 5)], axis=0)
         bvals = mag_weighted_sum(mags_prim[clusters], other_vals[clusters,:])
         out2 = pd.DataFrame(data=bvals, columns=['l','b','mul','mub','plx'])
         return pd.concat([out,out2],axis=1)
