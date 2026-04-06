@@ -12,7 +12,8 @@ def magsum(magss):
 
 def mag_weighted_sum(mags, vals):
     fluxes = 10**(-0.4*mags)
-    return (np.sum(fluxes.T*vals.T, axis=1)/np.sum(fluxes,axis=1)).T
+    sum_vals = (np.sum(fluxes.T*vals.T, axis=1)/np.sum(fluxes,axis=1)).T
+    return sum_vals
 
 """
 Use a KDTree to calculate unique point clusters with maximum radius
@@ -78,11 +79,10 @@ def calc_blends(dat_all, blend_rad, filters,
     bmags = magsum(mags[clusters,:])
     out = pd.DataFrame(data=bmags, columns=filters)
     if calc_params:
-        mags = np.append(mags_prim, [np.inf])
+        mags_prim = np.append(mags_prim, [np.inf])
         other_vals = np.append(other_vals, [np.repeat(0, 5)], axis=0)
         bvals = mag_weighted_sum(mags_prim[clusters], other_vals[clusters,:])
         out2 = pd.DataFrame(data=bvals, columns=['l','b','mul','mub','plx'])
-        return pd.concat([out,out2],axis=1)
     return out
 
 
