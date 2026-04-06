@@ -57,7 +57,7 @@ def calc_blends(dat_all, blend_rad, filters,
     all_l, all_b = dat_all['l'].to_numpy(), dat_all['b'].to_numpy()
     delta_l_cosb = ((all_l-360*(all_l>180))-l_mean)*np.cos(all_b*np.pi/180)
     delta_b = all_b-b_mean
-    all_pts = np.transpose([all_l,all_b])
+    all_pts = np.transpose([delta_l_cosb,delta_b])
 
     # Set up arrays with necessary data
     mags = dat_all[filters].to_numpy()
@@ -72,7 +72,6 @@ def calc_blends(dat_all, blend_rad, filters,
     # Turn this into a masked array for easy mag + param sums
     clusters_arr = np.array(list(zip_longest(*clusters0, fillvalue=-1))).T
     clusters = np.ma.masked_values(clusters_arr, -1)
-    #pdb.set_trace()
 
     # Compute the magnitude sums & other values if desired
     mags = np.append(mags, [np.repeat(np.inf, len(filters))], axis=0)
@@ -83,6 +82,7 @@ def calc_blends(dat_all, blend_rad, filters,
         other_vals = np.append(other_vals, [np.repeat(0, 5)], axis=0)
         bvals = mag_weighted_sum(mags_prim[clusters], other_vals[clusters,:])
         out2 = pd.DataFrame(data=bvals, columns=['l','b','mul','mub','plx'])
+        return pd.concat([out,out2], axis=1)
     return out
 
 
