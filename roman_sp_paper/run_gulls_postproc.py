@@ -2,34 +2,66 @@ import numpy as np
 import synthpop as sp
 import pandas as pd
 import shutil
+import h5py
 
-flds = pd.read_csv('overguide_chip_centers.dat', sep='\s+')
-set_name='source'
-dir_orig = 'roman_chips/'+set_name
-dir_new = 'roman_chips_gulls/'+set_name
+old_cols = [ 'logL', 'logTeff', 'logg', 'Fe/H_evolved', 'log_radius']
+new_cols = [ 'log_L', 'log_Teff', 'log_g', '[Fe/H]', 'log_R']
 
-mod = sp.SynthPop('huston2025_defaults.synthpop_conf',
-                  maglim=["W146", 23.975533+2, "remove"],
-                  post_processing_kwargs={"name":"GullsPostProcessing", "cat_type":set_name},
-                  name_for_output="Huston2025",
-                  output_location="roman_chips/IGNORE",
-                  output_file_type="csv"
+def prep_gulls(l,b):
+    f_orig = dir_orig+'/Huston2025_l'+f'{l:2.3f}'+'_b'+f'{b:2.3f}'+'.h5'
+    f_new = dir_new+'/Huston2025_l'+f'{l:2.3f}'+'_b'+f'{b:2.3f}'+'.csv'
+    dat = pd.read_hdf(f_orig, key='data')
+    xyz = mod.populations[0].coord_trans.dlb_to_xyz(*dat[['Dist','l','b']].to_numpy().T)
+    dat.loc[:,'x'] = xyz[0]
+    dat.loc[:,'y'] = xyz[1]
+    dat.loc[:,'z'] = xyz[2]
+    dat.rename(columns=dict(zip(old_cols,new_cols)), inplace=True)
+    dat_new = mod.post_processing(dat)
+    dat_new.to_csv(f_new,sep=' ', index=False)
+    print(f'  processed l={l:2.3f}, b={b:2.3f}')
+    n = len(dat)
+    with h5py.File(f_orig, 'r') as hf:
+        sa = hf['solid_angle'][()]
+    return n, sa
+
+sets = ['source', 'lens', 'faint', 'mid2', 'mid1', 'bright', 'extra-bright']
+
+mod = sp.SynthPop('huston2025_defaults.synthpop_conf', extinction_map_kwargs={"name":"NoExtinction"},
+                  post_processing_kwargs={"name":"GullsPostProcessing", "cat_type":"n/a"},
                  )
 mod.init_populations()
 
-#postproc = sp.modules.post_processing.gulls_post_processing.GullsPostProcessing(mod, set_name)
+df = pd.DataFrame()
 
-for i in flds.index:
-    l = flds.l[i]
-    b = flds.b[i]
-    f_orig = dir_orig+'/Huston2025_l'+f'{l:2.3f}'+'_b'+f'{b:2.3f}'+'.h5'
-    f_orig_log = dir_orig+'/Huston2025_l'+f'{l:2.3f}'+'_b'+f'{b:2.3f}'+'.log'
+for set_name in sets:
+    dir_orig = 'roman_dense_grid/'+set_name
+    dir_new = 'roman_dense_grid_gulls/'+set_name
 
-    f_new = dir_new+'/Huston2025_l'+f'{l:2.3f}'+'_b'+f'{b:2.3f}'+'.csv'
-    f_new_log = dir_new+'/Huston2025_l'+f'{l:2.3f}'+'_b'+f'{b:2.3f}'+'.log'
+    n_stars = []
+    solangs = []
+    ls, bs = [], []
 
-    shutil.copyfile(f_orig_log, f_new_log, follow_symlinks=True)
-    dat = pd.read_hdf(f_orig, key='data')
-    dat_new = mod.post_processing(dat)
-    dat_new.to_csv(f_new,sep=' ', index=False)
-    print(f'processed l={l:2.3f}, b={b:2.3f}')
+    for b in np.arange(-2.20, -0.70+0.01, 0.05):
+        for l in np.arange(-1.00, 1.80+0.01, 0.05):
+            n, sa = prep_gulls(l,b)
+            n_stars.append(n)
+            solangs.append(sa)
+            ls.append(np.round(l, 3))
+            bs.append(np.round(b, 3))
+    for b in np.arange(-0.70+0.05, 0.5+0.01, 0.05):
+        for l in np.arange(-0.5, 0.5+0.01, 0.05):
+            n, sa = prep_gulls(l,b)
+            n_stars.append(n)
+            solangs.append(sa)
+            ls.append(np.round(l, 3))
+            bs.append(np.round(b, 3))
+
+    if set_name=='source':
+        df['l'] = ls 
+        df['b'] = bs 
+    df['nstars_'+set_name] = n_stars
+    df['sa_deg2_'+set_name] = solangs
+
+    print(f'{set_name} complete')
+
+df.to_csv('roman_dense_grid_gulls/catalog_info.txt', sep=' ', index=False)
