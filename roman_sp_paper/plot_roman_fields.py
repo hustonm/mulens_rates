@@ -96,10 +96,10 @@ def plot_outline(plot=plt, season='spring', custom_fields=None):
         raise ValueError(f"season {season} not found, use spring or fall")
     elif season=='spring':
         flds = np.loadtxt(f"{dir_path}/field_centers_spring.txt", skiprows=1)
-        pa_v3 = 90.75
+        pa_v3 = 90.6
     elif season=='fall':
         flds = np.loadtxt(f"{dir_path}/field_centers_fall.txt", skiprows=1)
-        pa_v3 = 270.75
+        pa_v3 = 270.6
     if custom_fields is not None:
         flds = np.loadtxt(custom_fields, skiprows=1)
         
