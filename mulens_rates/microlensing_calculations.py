@@ -49,9 +49,9 @@ def mulens_stats(l, b, f_lens, f_src, field_id=None, outputs=['l','b','n_source'
                                                   'stdev_ds','stdev_dl',
                                                   'frac_bulge_lens', 'frac_disk_lens',
                                                   'frac_bulge_source','frac_disk_source',
-                                                  'frac_lowmass','frac_compact_obj','n_compact_obj',
+                                                  'frac_lowmass','frac_bd','frac_compact_obj','n_compact_obj',
                                                   'frac_ns', 'frac_bh',
-                                                  'field_id', 'f_src', 'f_lens'
+                                                  'field_id', 'f_src', 'f_lens', 'f_rc'
                                                  ],
                     nsd=False, roman_blue=False, mag_band=None, mag_cut=np.inf,
                     f_lens_kwargs={}, f_src_kwargs={},
@@ -69,7 +69,7 @@ def mulens_stats(l, b, f_lens, f_src, field_id=None, outputs=['l','b','n_source'
     return_dict['b'] = b
     # read in data
     l_cols = ['Mass','iMass','Dist','pop','mul','mub','phase']
-    s_cols = ['Dist','pop','mul','mub']
+    s_cols = ['Dist','pop','mul','mub','phase']
     if mag_band is not None:
         s_cols.append(mag_band)
     if roman_blue:
@@ -95,9 +95,17 @@ def mulens_stats(l, b, f_lens, f_src, field_id=None, outputs=['l','b','n_source'
                     sv.append(line)
                     sav=0
                 if ('set solid_angle to' in line):
+                    scale_not_area = False
+                    sav=1
+                elif ('set field scale to' in line):
+                    print("ASSUMING CIRCLE FIELD -- FIX CODE FOR BOX SOME DAY")
+                    scale_not_area = True
                     sav=1
         row = sv[-1].split(' ')
-        la = float(row[-2]) * ((np.pi/180)**2)**int('deg^2' in row[-1])
+        if not scale_not_area:
+            la = float(row[-2]) * ((np.pi/180)**2)**int('deg^2' in row[-1])    
+        else:
+            la = np.pi*float(row[-2])**2 * ((np.pi/180)**2)
     else:
         la = sa_lens * ((np.pi/180)**2)
     sv = []
@@ -108,9 +116,17 @@ def mulens_stats(l, b, f_lens, f_src, field_id=None, outputs=['l','b','n_source'
                     sv.append(line)
                     sav=0
                 if ('set solid_angle to' in line):
+                    scale_not_area = False
+                    sav=1
+                elif ('set field scale to' in line):
+                    print("ASSUMING CIRCLE FIELD -- FIX CODE FOR BOX SOME DAY")
+                    scale_not_area = True
                     sav=1
         row = sv[-1].split(' ')
-        sa = float(row[-2]) * ((np.pi/180)**2)**int('deg^2' in row[-1])
+        if not scale_not_area:
+            sa = float(row[-2]) * ((np.pi/180)**2)**int('deg^2' in row[-1])
+        else:
+            sa = np.pi*float(row[-2])**2 * ((np.pi/180)**2)
     else:
         sa = sa_src * ((np.pi/180)**2)
 
@@ -149,7 +165,10 @@ def mulens_stats(l, b, f_lens, f_src, field_id=None, outputs=['l','b','n_source'
     lens_bhs = (np.array(lens['phase']).astype(int)==103).astype(int)
     lens_nss = (np.array(lens['phase']).astype(int)==102).astype(int)
     lens_lowmass = (np.array(lens['iMass'])<0.1).astype(int)
+    lens_bd = (np.array(lens['iMass'])<0.08).astype(int)
     lens_inbulge = np.array((lens_pops==0.0).astype(int))
+    source_phase = np.array(srcs['phase'])
+    source_rc = np.array(((source_phase>=3.0) & (source_phase<4.0)).astype(int))
     if nsd:
         lens_innsd = np.array((lens_pops==2.0).astype(int))
         lens_indisk = np.array((lens_pops>=3.0).astype(int))
@@ -224,10 +243,12 @@ def mulens_stats(l, b, f_lens, f_src, field_id=None, outputs=['l','b','n_source'
     if roman_blue:
         return_dict['frac_det_blue'] = np.sum(src_Z087[use_srcs]*thetamu) / sum_thetamu
     return_dict['frac_lowmass'] = np.sum(lens_lowmass[use_lens]*thetamu) / sum_thetamu    
+    return_dict['frac_bd'] = np.sum(lens_bd[use_lens]*thetamu) / sum_thetamu    
     return_dict['frac_compact_obj'] = np.sum(lens_cos[use_lens]*thetamu) / sum_thetamu    
     return_dict['frac_bh'] = np.sum(lens_bhs[use_lens]*thetamu) / sum_thetamu    
     return_dict['frac_ns'] = np.sum(lens_nss[use_lens]*thetamu) / sum_thetamu    
     return_dict['n_compact_obj'] = np.sum(lens_cos)
+    return_dict['f_rc'] = np.sum(source_rc[use_srcs]*thetamu) / sum_thetamu
 
     return_dict['stdev_t'] = np.sqrt(np.average((t_e-return_dict['avg_t'])**2, weights=theta_e*mu_rel))
     return_dict['stdev_logt'] = np.sqrt(np.average((np.log10(t_e)-return_dict['avg_logt'])**2, weights=theta_e*mu_rel))
@@ -240,6 +261,11 @@ def mulens_stats(l, b, f_lens, f_src, field_id=None, outputs=['l','b','n_source'
 
     # Return selected outputs
     return [return_dict[output] for output in outputs], outputs
+
+
+
+
+
 
 
 '''
